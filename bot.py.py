@@ -4,11 +4,13 @@ import discord
 from discord.ext import tasks, commands
 import requests
 from bs4 import BeautifulSoup
+from flask import Flask
+import threading
 
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-CHANNEL_ID = int(os.getenv('CHANNEL_ID'))   # the room where it posts
+CHANNEL_ID = int(os.getenv('CHANNEL_ID'))
 
 SEEN_FILE = 'seen_products.json'
 
@@ -27,7 +29,7 @@ async def on_ready():
     print(f'{bot.user} is awake and hunting new Pokémon cards!')
     check_new_drops.start()
 
-@tasks.loop(minutes=30)  # checks every 30 minutes
+@tasks.loop(minutes=30)
 async def check_new_drops():
     print("Peeking at the Pokémon shop...")
     url = "https://www.pokemoncenter.com/category/new-releases"
@@ -52,13 +54,12 @@ async def check_new_drops():
                 continue
             full_url = "https://www.pokemoncenter.com" + href
 
-            # Only Pokémon cards and TCG stuff
             keywords = ['tcg', 'card', 'booster', 'sleeves', 'pokémon', 'pixels', 'mega evolution']
             if any(kw in title.lower() for kw in keywords) and title not in seen:
                 if '/products/' in href or '/product/' in href:
                     new_posts.append(f"**🃏 NEW DROP ALERT!** {title}\n{full_url}")
                     seen.add(title)
-                    if len(new_posts) >= 5:  # don't spam
+                    if len(new_posts) >= 5:
                         break
 
         if new_posts:
@@ -74,4 +75,15 @@ async def check_new_drops():
     except Exception as e:
         print(f"Oops, shop peek failed: {e}")
 
-bot.run(os.getenv('DISCORD_TOKEN'))
+# Tiny "I'm alive!" door so Render stays happy
+def run_keepalive():
+    app = Flask(__name__)
+    @app.route('/')
+    def home():
+        return "PokéTimez Tracker is alive and watching for new cards! 🃏"
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
+if __name__ == "__main__":
+    threading.Thread(target=run_keepalive).start()
+    bot.run(os.getenv('DISCORD_TOKEN'))
